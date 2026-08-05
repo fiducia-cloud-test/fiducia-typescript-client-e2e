@@ -1,0 +1,23 @@
+name: Hardening regression contract
+
+on:
+  pull_request:
+    paths:
+      - "hardening/**"
+      - ".github/workflows/hardening-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate lease, retry, and replay invariants
+        run: python3 -m unittest -v hardening/test_scenarios.py
