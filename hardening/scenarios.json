@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "system": "fiducia-typescript-client",
+  "source": {
+    "repositories": [
+      "fiducia-cloud/fiducia-clients",
+      "fiducia-cloud/fiducia-interfaces"
+    ]
+  },
+  "requiredInvariants": [
+    "monotonic-fencing",
+    "retry-idempotency",
+    "redirect-refusal",
+    "websocket-resume",
+    "quorum-safety",
+    "dlq-replay-idempotency",
+    "secret-redaction"
+  ],
+  "scenarios": [
+    {
+      "id": "stale-fencing-token",
+      "setup": ["lease generation 42", "client holding generation 41"],
+      "action": "write with the stale fencing token",
+      "expect": ["write rejected", "current lease unchanged", "typed stale-fence error"],
+      "invariants": ["monotonic-fencing"]
+    },
+    {
+      "id": "retry-after-429",
+      "setup": ["idempotent acquire request", "server returns 429 with Retry-After"],
+      "action": "client retries",
+      "expect": ["delay honors server hint", "same idempotency key reused", "at most one lease created"],
+      "invariants": ["retry-idempotency"]
+    },
+    {
+      "id": "credentialed-redirect",
+      "setup": ["authenticated API request", "302 to a different origin"],
+      "action": "client receives redirect",
+      "expect": ["redirect refused", "authorization data not forwarded", "typed redirect error"],
+      "invariants": ["redirect-refusal", "secret-redaction"]
+    },
+    {
+      "id": "leader-failover",
+      "setup": ["five-node group", "committed lease", "leader failure"],
+      "action": "elect a new leader and renew",
+      "expect": ["generation increases", "two active holders are never observed", "quorum result is durable"],
+      "invariants": ["monotonic-fencing", "quorum-safety"]
+    },
+    {
+      "id": "websocket-resume",
+      "setup": ["event cursor 100", "disconnect after event 103"],
+      "action": "reconnect from cursor 100",
+      "expect": ["events replay once", "duplicates suppressed", "cursor advances monotonically"],
+      "invariants": ["websocket-resume"]
+    },
+    {
+      "id": "nats-dlq-replay",
+      "setup": ["failed command in DLQ", "stable command id"],
+      "action": "replay twice after dependency recovery",
+      "expect": ["one state transition", "duplicate replay acknowledged without reapplying"],
+      "invariants": ["dlq-replay-idempotency", "retry-idempotency"]
+    }
+  ]
+}
