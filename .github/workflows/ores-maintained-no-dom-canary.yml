@@ -1,0 +1,70 @@
+name: ORES maintained no-DOM consumer canary
+
+on:
+  pull_request:
+    paths:
+      - "canaries/ores-maintained-no-dom/**"
+      - ".github/workflows/ores-maintained-no-dom-canary.yml"
+  push:
+    branches: [main]
+    paths:
+      - "canaries/ores-maintained-no-dom/**"
+      - ".github/workflows/ores-maintained-no-dom-canary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ORES_LOCKS_SHA: ab5e09ba509aeefa35cd14f2d391eca1003a09c0
+
+jobs:
+  packed-no-dom-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out independent fiducia-cloud test harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out exact ORES locks source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ORESoftware/ores-locks-and-leases
+          ref: ${{ env.ORES_LOCKS_SHA }}
+          path: upstream/ores-locks-and-leases
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Build and pack exact production TypeScript source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream/ores-locks-and-leases/src/ts
+          npm ci --no-audit --no-fund
+          npm run build
+          mkdir -p "$GITHUB_WORKSPACE/pack"
+          npm pack --pack-destination "$GITHUB_WORKSPACE/pack"
+
+      - name: Install packed artifact into server-only consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball="$(find "$GITHUB_WORKSPACE/pack" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          cd canaries/ores-maintained-no-dom
+          npm install --ignore-scripts --no-audit --no-fund --no-save "$tarball"
+
+      - name: Compile consumer with ES2022 and no DOM library
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream/ores-locks-and-leases/src/ts/node_modules/.bin/tsc \
+            -p canaries/ores-maintained-no-dom/tsconfig.json
